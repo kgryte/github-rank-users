@@ -1,0 +1,184 @@
+#!/usr/bin/env node
+'use strict';
+
+// MODULES //
+
+var fs = require( 'fs' );
+var path = require( 'path' );
+var parseArgs = require( 'minimist' );
+var notifier = require( 'update-notifier' );
+var pkg = require( './../package.json' );
+var opts = require( './opts.json' );
+var rank = require( './../lib' );
+
+
+// VARIABLES //
+
+var delimiter;
+var token;
+var args;
+var fmt;
+
+
+// FUNCTIONS //
+
+/**
+* FUNCTION: onClose()
+*	Callback invoked upon writing a file to `stdout`.
+*
+* @private
+*/
+function onClose() {
+	process.exit( 0 );
+}
+
+
+// INIT //
+
+process.stdout.on( 'error', process.exit );
+
+
+// PACKAGE UPDATES //
+
+notifier( { 'pkg': pkg } ).notify();
+
+
+// ARGUMENTS //
+
+args = parseArgs( process.argv.slice( 2 ), opts );
+
+
+// HELP //
+
+if ( args.help ) {
+	fs.createReadStream( path.join( __dirname, 'usage.txt' ) )
+		.pipe( process.stdout )
+		.on( 'close', onClose );
+    return;
+}
+
+
+// VERSION //
+
+if ( args.version ) {
+	console.log( pkg.version );
+	return;
+}
+
+
+// OPTIONS //
+
+opts = {};
+
+// FIXME: query for user details and then run through ranking...
+opts.usernames = args._[ 0 ];
+
+if ( args.useragent ) {
+	opts.useragent = args.useragent;
+}
+if ( args.method ) {
+	opts.method = args.method;
+}
+if ( args.token ) {
+	token = args.token;
+}
+else if ( process.env.GITHUB_TOKEN ) {
+	token = process.env.GITHUB_TOKEN;
+}
+if ( token ) {
+	opts.token = token;
+}
+if (
+	args.format &&
+	args.format !== 'csv' &&
+	args.format !== 'json'
+) {
+	throw new Error( 'invalid option. Format option must be either `csv` or `json`. Option: `' + args.format + '`.' );
+}
+fmt = args.format || 'csv';
+delimiter = args.delimiter || ',';
+
+
+// RANK //
+
+rank( opts, clbk );
+
+/**
+* FUNCTION: clbk( error, data, info )
+*	Callback invoked upon receiving a request response.
+*
+* @private
+* @param {Error|Null} error - error object
+* @param {Array[]} data - response data
+* @param {Object} info - rate limit info
+* @returns {Void}
+*/
+function clbk( error, data, info ) {
+	var writer;
+	if ( info ) {
+		process.stderr.write( JSON.stringify( info ) + '\n' );
+	}
+	if ( error ) {
+		process.stderr.write( error.message );
+		return;
+	}
+	if ( fmt === 'json' ) {
+		writer = json;
+	} else {
+		writer = csv;
+	}
+	writer( process.stdout, data );
+	process.exit( 0 );
+} // end FUNCTION clbk()
+
+/**
+* FUNCTION: csv( stream, data )
+*	Writes newline-delimited column-separated values to a writable stream.
+*
+* @private
+* @param {Stream} stream - writable stream
+* @param {Object} data - data to write
+* @returns {Void}
+*/
+function csv( stream, data ) {
+	var scores;
+	var row;
+	var len;
+	var i;
+
+	scores = data.results;
+	data = data.data;
+
+	// Number of users:
+	len = scores.length;
+
+	// Write CSV headers...
+	row = 'username'+delimiter+'value'+'\n';
+	stream.write( row, 'utf8' );
+
+	// Write CSV values...
+	for ( i = 0; i < len; i++ ) {
+		row = data[ i ].login;
+		row += delimiter;
+		row += scores[ i ];
+		row += '\n';
+
+		// Write out the row:
+		stream.write( row, 'utf8' );
+	}
+} // end FUNCTION csv()
+
+/**
+* FUNCTION: json( stream, data )
+*	Writes JSON to a writable stream.
+*
+* @private
+* @param {Stream} stream - writable stream
+* @param {Object} data - data to write
+* @returns {Void}
+*/
+function json( stream, data ) {
+	var out;
+	out = JSON.stringify( data ) + '\n';
+	stream.write( out, 'utf8' );
+} // end FUNCTION json()

@@ -1,0 +1,5 @@
+{
+	"method": "followers",
+	"order": "desc",
+	"useragent": "https://github.com/kgryte/github-rank-users"
+}
