@@ -58,8 +58,7 @@ function clbk( error, results, info ) {
 		{
 			"data": [
 				{"login":"boop",...},
-				{"login":"beep",...},
-				...
+				{"login":"beep",...}
 			],
 			"results": [ 10, 9 ]
 		}
