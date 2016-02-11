@@ -7,6 +7,7 @@ var fs = require( 'fs' );
 var path = require( 'path' );
 var parseArgs = require( 'minimist' );
 var notifier = require( 'update-notifier' );
+var details = require( 'github-user-details' );
 var pkg = require( './../package.json' );
 var opts = require( './opts.json' );
 var rank = require( './../lib' );
@@ -70,8 +71,7 @@ if ( args.version ) {
 
 opts = {};
 
-// FIXME: query for user details and then run through ranking...
-opts.usernames = args._[ 0 ];
+opts.usernames = args._;
 
 if ( args.useragent ) {
 	opts.useragent = args.useragent;
@@ -101,35 +101,83 @@ delimiter = args.delimiter || ',';
 
 // RANK //
 
-rank( opts, clbk );
+details( opts, onDetails );
 
 /**
-* FUNCTION: clbk( error, data, info )
-*	Callback invoked upon receiving a request response.
+* FUNCTION: onDetails( error, results, info )
+*	Callback invoked upon receiving user details.
 *
 * @private
 * @param {Error|Null} error - error object
-* @param {Array[]} data - response data
+* @param {Object} results - user detail data
 * @param {Object} info - rate limit info
 * @returns {Void}
 */
-function clbk( error, data, info ) {
+function onDetails( error, results, info ) {
+	var data;
+	var len;
+	if ( error ) {
+		return done( error, null, info );
+	}
+	len = Object.keys( results.failures ).length;
+	if ( len ) {
+		process.stderr.write( JSON.stringify( results.failures ), 'utf8' );
+		process.stderr.write( '\n', 'utf8' );
+	}
+	len = Object.keys( results.data ).length;
+	if ( len ) {
+		data = transform( results.data );
+		rank( data, opts, done );
+	}
+} // end FUNCTION onDetails()
+
+/**
+* FUNCTION: transform( data )
+*	Transforms raw user detail data into a value array.
+*
+* @private
+* @param {Object} data - user detail data
+* @returns {Array} transformed data
+*/
+function transform( data ) {
+	var keys;
+	var out;
+	var i;
+	keys = Object.keys( data );
+	out = new Array( keys.length );
+	for ( i = 0; i < keys.length; i++ ) {
+		out[ i ] = data[ keys[i] ];
+	}
+	return out;
+} // end FUNCTION transform()
+
+/**
+* FUNCTION: done( error, results, info )
+*	Callback invoked upon completing analysis.
+*
+* @private
+* @param {Error|Null} error - error object
+* @param {Object} results - analysis results
+* @param {Object} info - rate limit info
+* @returns {Void}
+*/
+function done( error, results, info ) {
 	var writer;
 	if ( info ) {
-		process.stderr.write( JSON.stringify( info ) + '\n' );
+		process.stderr.write( JSON.stringify( info ) + '\n', 'utf8' );
 	}
 	if ( error ) {
-		process.stderr.write( error.message );
-		return;
+		process.stderr.write( error.message, 'utf8' );
+		return process.exit( 1 );
 	}
 	if ( fmt === 'json' ) {
 		writer = json;
 	} else {
 		writer = csv;
 	}
-	writer( process.stdout, data );
+	writer( process.stdout, results );
 	process.exit( 0 );
-} // end FUNCTION clbk()
+} // end FUNCTION done()
 
 /**
 * FUNCTION: csv( stream, data )
